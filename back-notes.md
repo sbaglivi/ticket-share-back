@@ -13,7 +13,7 @@ CREATE TABLE tickets
   (
      id          INT PRIMARY KEY auto_increment,
      price       FLOAT NOT NULL,
-     expire_time TIME NOT NULL,
+     datetime    DATETIME NOT NULL,
      seller_id   INT NOT NULL,
      latitude    FLOAT NOT NULL,
      longitude   FLOAT NOT NULL,
