@@ -92,3 +92,10 @@ What happens is that since i have an empty array in in useEffect that part only 
 and that's why after an update they start pointing to nothing.
 I can't take all the code out of useEffect because for some reason that doesn't work. Maybe I can put it all inside?
 I can't also put it all inside without the array because every time it refreshes it creates a new map, again not sure why.
+
+git ignore:
+if you prepend slash `/node` this blocks only files/directories that match in the root directory
+if you append slash `node/` this blocks in any directory and subdirectory the content of directories that match that name but not files that match the name, just directories (and sub) and the content of directories that match
+`node` will block both directories (and their content) and files whose name matches in each directory or subdirectory
+
+If you forget to remove node modules at the beginning use `git rm -r --cached .` and then add . commit and push
