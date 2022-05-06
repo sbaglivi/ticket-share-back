@@ -1,16 +1,15 @@
-import { Connection } from 'mysql2';
 import mysql, { RowDataPacket, FieldPacket } from 'mysql2';
 import { Pool } from 'mysql2/promise';
-import { PoolConnection } from 'mysql2/promise';
-import { format, escape, escapeId } from 'sqlstring';
+import { escape, escapeId } from 'sqlstring';
 
 const CONNECTION_OPTIONS = {
     host: 'localhost',
     user: 'simone',
     password: 'enomis',
-    database: 'ticket_share'
+    database: 'ticket_share',
+    dateStrings: true
+
 }
-// let [err, results] = await connection.execute('SELECT * FROM test');
 
 type queryResults = RowDataPacket[];
 type queryFields = FieldPacket[];
@@ -19,7 +18,12 @@ class Database {
     pool: Pool;
     constructor() {
         this.pool = mysql.createPool(CONNECTION_OPTIONS).promise();
-        this.createFakeTickets(); //TODO remove me
+        this.deleteInvalidTickets();
+        this.deleteOldTicketsAndCreateNewOnes();
+    }
+    async deleteOldTicketsAndCreateNewOnes() {
+        await this.pool.query('TRUNCATE TABLE tickets');
+        await this.createFakeTickets();
     }
     async getTest(): Promise<queryResults> {
         try {
@@ -83,7 +87,8 @@ class Database {
     }
     async getValidTickets(): Promise<queryResults> {
         try {
-            let [results, _]: [queryResults, queryFields] = await this.pool.query(`SELECT * FROM tickets WHERE datetime < DATE_ADD(NOW(), INTERVAL 15 MINUTE)`);
+            let [results, _]: [queryResults, queryFields] = await this.pool.query(`SELECT * FROM tickets WHERE datetime > DATE_ADD(NOW(), INTERVAL 15 MINUTE)`);
+            console.log(results.length)
             return results;
         } catch (e) {
             throw e;
@@ -97,8 +102,8 @@ class Database {
         }
     }
     async createFakeTickets(): Promise<void> {
-        const [minLat, maxLat] = [43.77087, 43.77112];
-        const [minLong, maxLong] = [11.25717, 11.25820];
+        const [minLat, maxLat] = [43.76908, 43.77723];
+        const [minLong, maxLong] = [11.24296, 11.26631];
         const [minPrice, maxPrice] = [0, 1.25]; // here step is 0.05
         const priceStep = 0.05;
         const user = {
@@ -119,26 +124,11 @@ class Database {
                 let minutesOffset = Math.floor((maxOffsetInMinutes - minOffsetInMinutes + 1) * Math.random()) + minOffsetInMinutes;
                 let time = this.calculateTimeAfterOffset(currentHours, currentMinutes, minutesOffset);
                 let datetime = `${date} ${time}:00`;
-                // console.log(price, lat, long, datetime); // ? Sometimes I'm under the impression that the avg time is later than it should be if uniform? maybe just statistics though
+                await this.createTicket(price, datetime, user.id, lat, long);
             }
         } catch (e) {
             throw e;
         }
-    }
-    getFormattedDate() {
-        let today = new Date();
-        return `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`
-    }
-    getFormattedTime() {
-        const milliSecondsInMinute = 60000;
-        let currentDateTime = new Date();
-        let twentyMinutesFromNow = new Date(currentDateTime.getTime() + 20 * milliSecondsInMinute)
-        return `${String(twentyMinutesFromNow.getHours()).padStart(2, '0')}:${String(twentyMinutesFromNow.getMinutes()).padStart(2, '0')}`;
-    }
-    getNumberOfMinutesFromTimeString(timeString: string) {
-        let hours = parseInt(timeString.substring(0, 2));
-        let minutes = parseInt(timeString.substring(3, 5));
-        return hours * 60 + minutes;
     }
     calculateTimeAfterOffset(hours: number, minutes: number, minutesOffset: number): string {
         let minutesToAdd = minutesOffset % 60;

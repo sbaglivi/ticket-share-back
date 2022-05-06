@@ -71,6 +71,9 @@ app.post('/ticket', isLoggedIn, async (req: Request, res: Response): Promise<voi
     await db.createTicket(price, datetime, req.user.id, latitude, longitude);
 })
 app.get('/api/tickets', async (req: Request, res: Response) => {
+    let tickets = await db.getValidTickets();
+    console.log(tickets);
+    res.setHeader('Access-Control-Allow-Origin', '*').json(tickets);
 })
 app.get('/api/geocoding/:search', async (req: Request, res: Response) => {
     try {
