@@ -4,12 +4,46 @@ import db from './Database';
 import fetch from 'node-fetch';
 import bodyParser from 'body-parser';
 import 'dotenv/config';
+import session from 'express-session';
+import sqlStore from 'express-mysql-session';
+import cors from 'cors';
+
+const sessionOptions = {
+    secret: 'yellow chicken',
+    resave: false,
+    saveUninitialized: true,
+    name: 'ticket-share-back',
+    cookie: {
+        maxAge: 3600000
+    }
+}
+const MySQLStore = sqlStore(session);
+const sessionStore = new MySQLStore({}, db.pool)
 const geocodingCache = new Map();
+declare module 'express-session' {
+    interface SessionData {
+        visited: number | undefined,
+        user: { id: number, username: string } | undefined,
+    }
+}
+
 
 const app: Express = express();
+// app.use(cors());
 app.use(bodyParser.urlencoded({ extended: true }))
+app.use(bodyParser.json());
+app.use(session(sessionOptions));
 
-
+app.use((req: Request, res, next) => {
+    res.setHeader('Access-Control-Allow-Origin', 'http://localhost:3000').setHeader('Access-Control-Allow-Headers', 'Content-Type').setHeader('Access-Control-Allow-Credentials', 'true');
+    if (req.session) {
+        if (req.session?.user) {
+            req.user = req.session.user;
+        };
+        console.log(req.session)
+    }
+    return next();
+})
 const PORT: Number = 5000;
 const parseFloatAndThrow = (numberString: string) => {
     let result = parseFloat(numberString);
@@ -43,10 +77,6 @@ const datetimeFromTime = (hourAndMinutes: string) => {
     return `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')} ${hourAndMinutes}:00`
 }
 
-app.use((req, res, next) => {
-    req.user = { id: 1, username: 'simone' };
-    return next();
-})
 
 const isLoggedIn = (req: Request, res: Response, next: Function) => {
     if (req.user) return next();
@@ -56,9 +86,47 @@ const isLoggedIn = (req: Request, res: Response, next: Function) => {
 app.get('/', async (req: Request, res: Response): Promise<void> => {
     let test: RowDataPacket[] = await db.getTest();
     console.log(test);
-    res.send(`Hello from a typescript server!\nThis is your message:\n${test[0].time}`);
+    if (req.session.visited) {
+        req.session.visited++;
+    } else {
+        console.log('got here')
+        req.session.visited = 1;
+    }
+    res.send(`Hello from a typescript server!\nThis is your message:\n${test[0].time}\nYou have visited this page ${req.session.visited} times`);
 })
+const isNotLoggedIn = (req: Request, res: Response, next: Function) => {
+    if (!req.user) {
+        return next();
+    }
+    return res.redirect('/')
+}
 
+app.get('/check', (req: Request, res: Response) => {
+    let message: string;
+    if (req.user) {
+        message = `You are correctly logged in ${req.user.username}`
+    } else {
+        message = `No user is logged in :(`;
+    }
+    res.status(200).send(message);
+
+})
+app.post('/login', isNotLoggedIn, async (req: Request, res: Response) => {
+    console.log(`origin: ${req.get('origin')}`)
+    let { username, password } = req.body;
+    process.stdout.write('body: ')
+    console.log(req.body) // REMOVE ME
+    if (username === 'simone' && password === 'bigsecret') {
+        console.log('credentials verified');
+        req.session.user = { id: 1, username: 'simone' }
+    }
+    if (req.session.visited) req.session.visited++
+    else req.session.visited = 1;
+    req.session.save(err => {
+        if (err) throw err;
+        res.status(200).send(req.session.user)
+    })
+})
 app.post('/ticket', isLoggedIn, async (req: Request, res: Response): Promise<void> => {
     let { price, expireTime, latitude, longitude } = req.body;
     [price, latitude, longitude] = [price, latitude, longitude].map(stringValue => parseFloatAndThrow(stringValue));
@@ -72,7 +140,7 @@ app.post('/ticket', isLoggedIn, async (req: Request, res: Response): Promise<voi
 })
 app.get('/api/tickets', async (req: Request, res: Response) => {
     let tickets = await db.getValidTickets();
-    console.log(tickets);
+    // console.log(tickets);
     res.setHeader('Access-Control-Allow-Origin', '*').json(tickets);
 })
 app.get('/api/geocoding/:search', async (req: Request, res: Response) => {
